@@ -2367,29 +2367,10 @@ function OnboardingWizardInner({
           );
           return;
         }
-        if (adapterModelsError) {
-          setError(
-            adapterModelsError instanceof Error
-              ? adapterModelsError.message
-              : "Failed to load OpenCode models."
-          );
-          return;
-        }
-        if (adapterModelsLoading || adapterModelsFetching) {
-          setError(
-            "OpenCode models are still loading. Please wait and try again."
-          );
-          return;
-        }
-        const discoveredModels = adapterModels ?? [];
-        if (!discoveredModels.some((entry) => entry.id === selectedModelId)) {
-          setError(
-            discoveredModels.length === 0
-              ? "No OpenCode models discovered. Run `opencode models` and authenticate providers."
-              : `Configured OpenCode model is unavailable: ${selectedModelId}`
-          );
-          return;
-        }
+        // Model discovery (`opencode models`) only lists providers OpenCode
+        // already knows about, so self-hosted models (e.g. ollama/...) never
+        // appear in it. The provider/model format check above is sufficient;
+        // the server verifies availability at run time.
       }
 
       // Onboarding applies a stored Claude subscription login automatically,
