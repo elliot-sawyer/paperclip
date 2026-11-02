@@ -1,5 +1,37 @@
 import { z } from "zod";
 
+/**
+ * Returns true for any hostname that is a loopback address or an RFC-1918
+ * private-network address. The `local` routing kind accepts these hosts over
+ * plain HTTP so that users can point Paperclip at a locally running inference
+ * server such as Ollama or LM Studio on the same machine or LAN without TLS.
+ *
+ * Link-local ranges (169.254.x.x, fe80::/10) are intentionally excluded:
+ * 169.254.169.254 is the cloud-instance metadata endpoint on AWS, Azure, and
+ * GCP, and allowing plain HTTP there from a `local` connection would expose
+ * deployments on those platforms to SSRF.
+ */
+export function isLocalEndpointHost(hostname: string): boolean {
+  if (["localhost", "127.0.0.1", "[::1]"].includes(hostname)) return true;
+
+  // 127.0.0.0/8 (full loopback range, not just 127.0.0.1)
+  if (/^127\./.test(hostname)) return true;
+
+  // RFC-1918 — 10.0.0.0/8
+  if (/^10\./.test(hostname)) return true;
+  // RFC-1918 — 172.16.0.0/12 (172.16–172.31)
+  const m172 = hostname.match(/^172\.(\d+)\./);
+  if (m172 && Number(m172[1]) >= 16 && Number(m172[1]) <= 31) return true;
+  // RFC-1918 — 192.168.0.0/16
+  if (/^192\.168\./.test(hostname)) return true;
+
+  // IPv6 ULA fc00::/7 — strip brackets, lowercase
+  const ipv6 = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (/^f[cd]/.test(ipv6)) return true;
+
+  return false;
+}
+
 /** Value-free routing stored on the connection, never supplied by an agent binding. */
 export const aiProviderRoutingSchema = z
   .object({
@@ -54,19 +86,18 @@ export const aiProviderRoutingSchema = z
     if (route.kind === "gateway" || route.kind === "local") {
       try {
         const url = new URL(route.baseUrl ?? "");
-        const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(
-          url.hostname,
-        );
+        const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+        const localHost = route.kind === "local" ? isLocalEndpointHost(url.hostname) : loopback;
         if (
           url.username ||
           url.password ||
           url.search ||
           url.hash ||
-          (url.protocol !== "https:" && !(url.protocol === "http:" && loopback))
+          (url.protocol !== "https:" && !(url.protocol === "http:" && localHost))
         )
           throw new Error();
-        if (route.kind === "local" && !loopback)
-          invalid("A local endpoint must use localhost or a loopback address.");
+        if (route.kind === "local" && !localHost)
+          invalid("A local endpoint must use a loopback or private-network address.");
       } catch {
         invalid(
           "Enter an HTTPS base URL without credentials, query parameters, or a fragment. Local endpoints may use HTTP.",

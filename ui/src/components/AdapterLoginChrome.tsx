@@ -51,6 +51,7 @@ export const CONNECT_SOURCE_NAMES: Record<string, string> = {
   codex_local: "OpenAI",
   grok_local: "Grok",
   antigravity_runtime: "Google",
+  opencode_local: "Local LLM",
 };
 
 /** The provider name for a source, falling back to the type when unlisted. */

@@ -118,9 +118,10 @@ const adapterDisplayMap: Record<string, AdapterDisplayInfo> = {
     icon: Bot,
   },
   opencode_local: {
-    label: "OpenCode",
-    description: "OpenCode multi-provider harness",
+    label: "Local LLM",
+    description: "OpenCode harness — Ollama, LM Studio, or any OpenAI-compatible local server",
     icon: OpenCodeLogoIcon,
+    recommended: true,
   },
   pi_local: {
     label: "Pi",

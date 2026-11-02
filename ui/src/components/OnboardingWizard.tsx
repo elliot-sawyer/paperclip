@@ -155,7 +155,7 @@ type Step = 0 | 1 | 2 | 3 | 4 | 5;
 // wizard's registry-driven approach rather than a fixed union.
 type AdapterType = string;
 
-const ONBOARDING_ADAPTER_TYPES = new Set(["claude_local", "codex_local"]);
+const ONBOARDING_ADAPTER_TYPES = new Set(["claude_local", "codex_local", "opencode_local"]);
 
 function restoreOnboardingAdapterType(savedAdapterType: unknown, provider?: unknown, savedCopilot?: unknown): AdapterType {
   if (savedAdapterType === "paperclip_runner" && provider === "pi") return "pi_local";
@@ -259,6 +259,15 @@ const API_KEY_ENV_KEYS: Record<string, string> = {
 
 function apiKeyEnvKeyFor(adapterType: string): string {
   return API_KEY_ENV_KEYS[adapterType] ?? "API_KEY";
+}
+
+/**
+ * True when the adapter can connect without an API key. OpenCode-based local
+ * adapters route to Ollama, LM Studio, or similar servers that accept requests
+ * without authentication, so the key field is shown but not required.
+ */
+function apiKeyOptionalFor(adapterType: string): boolean {
+  return adapterType === "opencode_local";
 }
 
 function ModelSourceMark({
@@ -1573,7 +1582,7 @@ function OnboardingWizardInner({
                 label: "Connect",
                 icon: "arrow",
                 disabled:
-                  !connectStepReady || (credentialMode === "api" && !apiKey.trim() && !selectedApiKey && !restoredApiCredential && !managedBindingForStep()),
+                  !connectStepReady || (credentialMode === "api" && !apiKey.trim() && !selectedApiKey && !restoredApiCredential && !managedBindingForStep() && !apiKeyOptionalFor(adapterType)),
               }
           : // Nothing is chosen on arrival, and the row is what chooses. Until
             // it has been answered the button has nothing to do.
@@ -1758,6 +1767,16 @@ function OnboardingWizardInner({
     connectingSinceRef.current = null;
     setConnectCredentialStored(false);
   }, [step]);
+
+  // When opencode_local model discovery returns and the configured model is absent
+  // (e.g. the default "openai/gpt-5.2-codex" with an Ollama-only setup), snap to
+  // the first available model so the connect button isn't blocked by a phantom default.
+  useEffect(() => {
+    if (adapterType !== "opencode_local") return;
+    if (adapterModelsLoading || !adapterModels?.length) return;
+    if (adapterModels.some((m) => m.id === model)) return;
+    setModel(adapterModels[0].id);
+  }, [adapterType, adapterModels, adapterModelsLoading, model]);
 
   const selectedModel = (adapterModels ?? []).find((m) => m.id === model);
   const hasAnthropicApiKeyOverrideCheck =
@@ -3092,7 +3111,7 @@ function OnboardingWizardInner({
                       </p>
                     ) : credentialMode === "api" ? (
                       <OnboardingLoginCard
-                        instruction={hasGatewaySelection || connectionModels ? "Choose a model for your saved connection" : savedKeys.options.length ? "Choose a saved API key or enter a new one" : `Provide your ${
+                        instruction={hasGatewaySelection || connectionModels ? "Choose a model for your saved connection" : savedKeys.options.length ? "Choose a saved API key or enter a new one" : apiKeyOptionalFor(adapterType) ? "Optionally provide an API key — leave empty for keyless servers like Ollama" : `Provide your ${
                           CONNECT_SOURCE_NAMES[adapterType] ?? adapterType
                         } API key to connect`}
                       >
@@ -3103,8 +3122,8 @@ function OnboardingWizardInner({
                           setApiKey("");
                         }} />}
                         {!selectedApiKey && !hasGatewaySelection && !connectionModels && <OnboardingCardField
-                          label="API key"
-                          placeholder="Enter API key here"
+                          label={apiKeyOptionalFor(adapterType) ? "API key (optional)" : "API key"}
+                          placeholder={apiKeyOptionalFor(adapterType) ? "Leave empty for Ollama / keyless servers" : "Enter API key here"}
                           masked
                           // The card is the answer to the tile just pressed, so
                           // the field is unambiguously the next thing. Carried
